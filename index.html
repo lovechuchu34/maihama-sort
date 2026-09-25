@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>舞浜ソート</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="container">
+
+  <section id="start" class="screen">
+    <h1>舞浜ソート</h1>
+    <p>写真を見比べて、好きなほうを選んでください。</p>
+    <button id="startButton">ソートをはじめる</button>
+  </section>
+
+  <section id="sort" class="screen hidden">
+
+    <div class="progress">
+      <div id="progressBar"></div>
+    </div>
+
+    <div class="choices">
+
+      <button class="person" id="leftButton">
+        <img id="leftImage" src="" alt="">
+        <span id="leftGroup"></span>
+      </button>
+
+      <button class="person" id="rightButton">
+        <img id="rightImage" src="" alt="">
+        <span id="rightGroup"></span>
+      </button>
+
+    </div>
+
+    <div class="subButtons">
+      <button id="bothButton">どちらも好き</button>
+      <button id="skipButton">スキップ</button>
+    </div>
+
+  </section>
+
+  <section id="result" class="screen hidden">
+
+    <h1>あなたの舞浜ソート</h1>
+    <p>TOP 9</p>
+
+    <div id="resultGrid"></div>
+
+    <button id="againButton">もう一度ソートする</button>
+
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
