@@ -1,7 +1,8 @@
 let people = [];
 
-let scores = {};
-let counts = {};
+let wins = {};
+let losses = {};
+let draws = {};
 
 let leftPerson = null;
 let rightPerson = null;
@@ -79,26 +80,30 @@ function startSort() {
 
   }
 
-  scores = {};
-  counts = {};
+
+  wins = {};
+  losses = {};
+  draws = {};
+
 
   people.forEach(person => {
 
-    // 全員最初は同じ位置
-    scores[person.id] = 0;
-
-    // 何回比較されたか
-    counts[person.id] = 0;
+    wins[person.id] = {};
+    losses[person.id] = {};
+    draws[person.id] = {};
 
   });
 
+
   comparisons = 0;
 
-  /*
-    人数に応じて比較回数を設定。
 
-    少人数 → しっかり比較
-    大人数 → 無限に増えないよう制限
+  /*
+    人数が少ない場合は多めに比較。
+    人数が多い場合は600回を上限にする。
+
+    重要なのは「回数をこなす」ことではなく、
+    比較関係ができるだけ順位全体に広がること。
   */
 
   maxComparisons = Math.min(
@@ -109,11 +114,14 @@ function startSort() {
     )
   );
 
+
   startScreen.classList.add("hidden");
   resultScreen.classList.add("hidden");
   sortScreen.classList.remove("hidden");
 
+
   progressBar.style.width = "0%";
+
 
   showNextPair();
 
@@ -121,84 +129,340 @@ function startSort() {
 
 
 // ------------------------------------
-// 次の2人を選ぶ
+// これまで比較したか確認
+// ------------------------------------
+
+function hasCompared(a, b) {
+
+  return (
+    wins[a.id][b.id] !== undefined ||
+    wins[b.id][a.id] !== undefined ||
+    draws[a.id][b.id] !== undefined ||
+    draws[b.id][a.id] !== undefined
+  );
+
+}
+
+
+// ------------------------------------
+// 比較関係を取得
+// ------------------------------------
+
+function getRelationship(a, b) {
+
+  if (wins[a.id][b.id] !== undefined) {
+    return "aWins";
+  }
+
+  if (wins[b.id][a.id] !== undefined) {
+    return "bWins";
+  }
+
+  if (draws[a.id][b.id] !== undefined) {
+    return "draw";
+  }
+
+  return null;
+
+}
+
+
+// ------------------------------------
+// 現在の暫定順位を計算
+// ------------------------------------
+
+function calculateRanking() {
+
+  const results = [];
+
+
+  people.forEach(person => {
+
+    let score = 0;
+
+    let winCount = 0;
+    let lossCount = 0;
+    let drawCount = 0;
+
+
+    people.forEach(other => {
+
+      if (person.id === other.id) {
+        return;
+      }
+
+
+      if (
+        wins[person.id] &&
+        wins[person.id][other.id] !== undefined
+      ) {
+
+        winCount++;
+
+      }
+
+
+      if (
+        losses[person.id] &&
+        losses[person.id][other.id] !== undefined
+      ) {
+
+        lossCount++;
+
+      }
+
+
+      if (
+        draws[person.id] &&
+        draws[person.id][other.id] !== undefined
+      ) {
+
+        drawCount++;
+
+      }
+
+    });
+
+
+    /*
+      勝敗関係そのものを点数化。
+
+      勝ち → +1
+      引き分け → 0
+      負け → -1
+
+      ただし「誰に勝ったか」も考慮する。
+    */
+
+    people.forEach(other => {
+
+      if (person.id === other.id) {
+        return;
+      }
+
+
+      if (
+        wins[person.id] &&
+        wins[person.id][other.id] !== undefined
+      ) {
+
+        /*
+          相手の強さを考慮。
+
+          強い相手に勝った場合ほど
+          少し大きく評価する。
+        */
+
+        const opponentWins =
+          countWins(other.id);
+
+        const opponentLosses =
+          countLosses(other.id);
+
+
+        const opponentStrength =
+          1 +
+          (opponentWins - opponentLosses) * 0.1;
+
+
+        score += opponentStrength;
+
+      }
+
+
+      if (
+        losses[person.id] &&
+        losses[person.id][other.id] !== undefined
+      ) {
+
+        const opponentWins =
+          countWins(other.id);
+
+        const opponentLosses =
+          countLosses(other.id);
+
+
+        const opponentStrength =
+          1 +
+          (opponentWins - opponentLosses) * 0.1;
+
+
+        score -= opponentStrength;
+
+      }
+
+    });
+
+
+    /*
+      「どちらも好き」は少しプラス。
+
+      「どちらも嫌い」は少しマイナス。
+
+      ただし勝敗関係ほど強く影響させない。
+    */
+
+    score += drawCount * 0.05;
+
+
+    results.push({
+
+      person,
+      score,
+      winCount,
+      lossCount,
+      drawCount
+
+    });
+
+  });
+
+
+  results.sort((a, b) => {
+
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+
+    if (b.winCount !== a.winCount) {
+      return b.winCount - a.winCount;
+    }
+
+    return a.lossCount - b.lossCount;
+
+  });
+
+
+  return results;
+
+}
+
+
+// ------------------------------------
+// 勝ち数
+// ------------------------------------
+
+function countWins(id) {
+
+  if (!wins[id]) {
+    return 0;
+  }
+
+  return Object.keys(wins[id]).length;
+
+}
+
+
+// ------------------------------------
+// 負け数
+// ------------------------------------
+
+function countLosses(id) {
+
+  if (!losses[id]) {
+    return 0;
+  }
+
+  return Object.keys(losses[id]).length;
+
+}
+
+
+// ------------------------------------
+// 次の比較相手を選ぶ
 // ------------------------------------
 
 function choosePair() {
 
-  /*
-    比較回数が少ない人を優先する。
-
-    さらに、現在のスコアが近い人同士を
-    優先して比較する。
-  */
-
-  const shuffled = [...people];
-
-  shuffled.sort(() => Math.random() - 0.5);
-
-
-  let bestPair = null;
-  let bestScore = Infinity;
+  const ranking =
+    calculateRanking();
 
 
   /*
-    最大25人を候補として調べる
+    まずまだ比較していない組み合わせを探す。
+
+    順位が近い人同士を優先することで、
+
+    A > B
+    B > C
+
+    のような関係を作りやすくする。
   */
 
-  const sampleSize = Math.min(
-    shuffled.length,
-    25
-  );
+
+  const candidates = [];
 
 
-  for (let i = 0; i < sampleSize; i++) {
+  for (let i = 0; i < ranking.length; i++) {
 
-    for (let j = i + 1; j < sampleSize; j++) {
+    for (let j = i + 1; j < ranking.length; j++) {
 
-      const a = shuffled[i];
-      const b = shuffled[j];
+      const a =
+        ranking[i].person;
 
-
-      /*
-        同じ2人を何度も比較しすぎないための
-        ペナルティ
-      */
-
-      const comparisonPenalty =
-        (counts[a.id] + counts[b.id]) * 30;
+      const b =
+        ranking[j].person;
 
 
-      /*
-        スコアが近いほど優先
-      */
-
-      const scoreDifference =
-        Math.abs(
-          scores[a.id] -
-          scores[b.id]
-        );
-
-
-      const value =
-        scoreDifference +
-        comparisonPenalty;
-
-
-      if (value < bestScore) {
-
-        bestScore = value;
-
-        bestPair = [a, b];
-
+      if (hasCompared(a, b)) {
+        continue;
       }
+
+
+      /*
+        暫定順位が近いほど優先
+      */
+
+      const distance =
+        Math.abs(i - j);
+
+
+      candidates.push({
+
+        a,
+        b,
+        distance
+
+      });
 
     }
 
   }
 
 
-  return bestPair;
+  if (candidates.length > 0) {
+
+    /*
+      順位差が小さいものを優先。
+
+      同じ順位差ならランダム。
+    */
+
+    candidates.sort((a, b) => {
+
+      if (a.distance !== b.distance) {
+        return a.distance - b.distance;
+      }
+
+      return Math.random() - 0.5;
+
+    });
+
+
+    return [
+      candidates[0].a,
+      candidates[0].b
+    ];
+
+  }
+
+
+  /*
+    全組み合わせを一度比較した場合、
+    もう十分なのでランダム比較はしない。
+  */
+
+  return null;
 
 }
 
@@ -220,6 +484,7 @@ function showNextPair() {
 
   const pair = choosePair();
 
+
   if (!pair) {
 
     finishSort();
@@ -231,6 +496,22 @@ function showNextPair() {
 
   leftPerson = pair[0];
   rightPerson = pair[1];
+
+
+  /*
+    左右が毎回同じ人になり続けないよう、
+    ある程度ランダムにする。
+  */
+
+  if (Math.random() < 0.5) {
+
+    const temp = leftPerson;
+
+    leftPerson = rightPerson;
+
+    rightPerson = temp;
+
+  }
 
 
   leftImage.src =
@@ -268,58 +549,41 @@ function vote(result) {
   }
 
 
-  /*
-    左右の比較回数を記録
-  */
-
-  counts[leftPerson.id]++;
-  counts[rightPerson.id]++;
-
-
-  /*
-    スコア変化
-
-    左が好き
-      左 +2
-      右 -2
-
-    右が好き
-      左 -2
-      右 +2
-
-    どちらも好き
-      両方 +1
-
-    どちらも嫌い
-      両方 -1
-  */
-
-
   if (result === "left") {
 
-    scores[leftPerson.id] += 2;
-    scores[rightPerson.id] -= 2;
+    wins[leftPerson.id][rightPerson.id] = true;
+    losses[rightPerson.id][leftPerson.id] = true;
 
   }
+
 
   else if (result === "right") {
 
-    scores[leftPerson.id] -= 2;
-    scores[rightPerson.id] += 2;
+    wins[rightPerson.id][leftPerson.id] = true;
+    losses[leftPerson.id][rightPerson.id] = true;
 
   }
+
 
   else if (result === "both") {
 
-    scores[leftPerson.id] += 1;
-    scores[rightPerson.id] += 1;
+    draws[leftPerson.id][rightPerson.id] = true;
+    draws[rightPerson.id][leftPerson.id] = true;
 
   }
 
+
   else if (result === "neither") {
 
-    scores[leftPerson.id] -= 1;
-    scores[rightPerson.id] -= 1;
+    /*
+      「どちらも嫌い」は
+      勝敗関係にはしない。
+
+      2人とも下位方向に働く情報として記録する。
+    */
+
+    losses[leftPerson.id][rightPerson.id] = true;
+    losses[rightPerson.id][leftPerson.id] = true;
 
   }
 
@@ -332,7 +596,7 @@ function vote(result) {
 
 
 // ------------------------------------
-// 結果表示
+// 最終結果
 // ------------------------------------
 
 function finishSort() {
@@ -341,32 +605,10 @@ function finishSort() {
   resultScreen.classList.remove("hidden");
 
 
-  /*
-    スコア順に並べる
-
-    同点の場合は、
-    比較回数が多い人を優先
-  */
-
   const ranking =
-    [...people]
-      .sort((a, b) => {
-
-        const scoreDifference =
-          scores[b.id] -
-          scores[a.id];
-
-        if (scoreDifference !== 0) {
-          return scoreDifference;
-        }
-
-        return (
-          counts[b.id] -
-          counts[a.id]
-        );
-
-      })
-      .slice(0, 9);
+    calculateRanking()
+      .slice(0, 9)
+      .map(item => item.person);
 
 
   /*
@@ -397,6 +639,7 @@ function finishSort() {
 
     const person =
       ranking[index];
+
 
     if (!person) {
       return;
@@ -442,6 +685,7 @@ function finishSort() {
     tile.appendChild(image);
     tile.appendChild(rank);
     tile.appendChild(group);
+
 
     resultGrid.appendChild(tile);
 
@@ -506,7 +750,7 @@ againButton.addEventListener(
 
 
 // ------------------------------------
-// データ読み込み開始
+// データ読み込み
 // ------------------------------------
 
 loadPeople();
