@@ -1,5 +1,7 @@
 let people = [];
+
 let scores = {};
+let counts = {};
 
 let leftPerson = null;
 let rightPerson = null;
@@ -47,6 +49,8 @@ async function loadPeople() {
 
     people = await response.json();
 
+    console.log("読み込んだ人数:", people.length);
+
   } catch (error) {
 
     alert(
@@ -69,35 +73,47 @@ function startSort() {
 
   if (people.length < 2) {
 
-    alert("人物データが足りません。");
+    alert("人物データが2人以上必要です。");
 
     return;
 
   }
 
   scores = {};
+  counts = {};
 
   people.forEach(person => {
 
-    scores[person.id] = 1000;
+    // 全員最初は同じ位置
+    scores[person.id] = 0;
+
+    // 何回比較されたか
+    counts[person.id] = 0;
 
   });
 
   comparisons = 0;
 
+  /*
+    人数に応じて比較回数を設定。
+
+    少人数 → しっかり比較
+    大人数 → 無限に増えないよう制限
+  */
+
   maxComparisons = Math.min(
-    500,
+    600,
     Math.max(
       100,
-      people.length * 3
+      people.length * 5
     )
   );
 
   startScreen.classList.add("hidden");
-
   resultScreen.classList.add("hidden");
-
   sortScreen.classList.remove("hidden");
+
+  progressBar.style.width = "0%";
 
   showNextPair();
 
@@ -110,53 +126,70 @@ function startSort() {
 
 function choosePair() {
 
+  /*
+    比較回数が少ない人を優先する。
+
+    さらに、現在のスコアが近い人同士を
+    優先して比較する。
+  */
+
   const shuffled = [...people];
 
   shuffled.sort(() => Math.random() - 0.5);
 
-  let bestA = shuffled[0];
-  let bestB = shuffled[1];
 
-  let smallestDifference =
-    Math.abs(
-      scores[bestA.id] -
-      scores[bestB.id]
-    );
+  let bestPair = null;
+  let bestScore = Infinity;
 
-  const sampleSize =
-    Math.min(
-      shuffled.length,
-      25
-    );
 
-  for (
-    let i = 0;
-    i < sampleSize;
-    i++
-  ) {
+  /*
+    最大25人を候補として調べる
+  */
 
-    for (
-      let j = i + 1;
-      j < sampleSize;
-      j++
-    ) {
+  const sampleSize = Math.min(
+    shuffled.length,
+    25
+  );
 
-      const difference =
+
+  for (let i = 0; i < sampleSize; i++) {
+
+    for (let j = i + 1; j < sampleSize; j++) {
+
+      const a = shuffled[i];
+      const b = shuffled[j];
+
+
+      /*
+        同じ2人を何度も比較しすぎないための
+        ペナルティ
+      */
+
+      const comparisonPenalty =
+        (counts[a.id] + counts[b.id]) * 30;
+
+
+      /*
+        スコアが近いほど優先
+      */
+
+      const scoreDifference =
         Math.abs(
-          scores[shuffled[i].id] -
-          scores[shuffled[j].id]
+          scores[a.id] -
+          scores[b.id]
         );
 
-      if (
-        difference < smallestDifference
-      ) {
 
-        smallestDifference =
-          difference;
+      const value =
+        scoreDifference +
+        comparisonPenalty;
 
-        bestA = shuffled[i];
 
-        bestB = shuffled[j];
+      if (value < bestScore) {
+
+        bestScore = value;
+
+        bestPair = [a, b];
 
       }
 
@@ -164,21 +197,19 @@ function choosePair() {
 
   }
 
-  return [bestA, bestB];
+
+  return bestPair;
 
 }
 
 
 // ------------------------------------
-// 2人を画面に表示
+// 2人を表示
 // ------------------------------------
 
 function showNextPair() {
 
-  if (
-    comparisons >=
-    maxComparisons
-  ) {
+  if (comparisons >= maxComparisons) {
 
     finishSort();
 
@@ -186,11 +217,21 @@ function showNextPair() {
 
   }
 
+
   const pair = choosePair();
 
-  leftPerson = pair[0];
+  if (!pair) {
 
+    finishSort();
+
+    return;
+
+  }
+
+
+  leftPerson = pair[0];
   rightPerson = pair[1];
+
 
   leftImage.src =
     leftPerson.src;
@@ -198,17 +239,17 @@ function showNextPair() {
   rightImage.src =
     rightPerson.src;
 
+
   leftGroup.textContent =
     leftPerson.group || "";
 
   rightGroup.textContent =
     rightPerson.group || "";
 
+
   const progress =
-    (
-      comparisons /
-      maxComparisons
-    ) * 100;
+    (comparisons / maxComparisons) * 100;
+
 
   progressBar.style.width =
     progress + "%";
@@ -217,66 +258,71 @@ function showNextPair() {
 
 
 // ------------------------------------
-// Elo計算
+// 投票
 // ------------------------------------
 
 function vote(result) {
 
-  const ratingA =
-    scores[leftPerson.id];
+  if (!leftPerson || !rightPerson) {
+    return;
+  }
 
-  const ratingB =
-    scores[rightPerson.id];
 
-  const expectedA =
-    1 /
-    (
-      1 +
-      Math.pow(
-        10,
-        (ratingB - ratingA) / 400
-      )
-    );
+  /*
+    左右の比較回数を記録
+  */
 
-  const expectedB =
-    1 -
-    expectedA;
+  counts[leftPerson.id]++;
+  counts[rightPerson.id]++;
 
-  let actualA;
-  let actualB;
+
+  /*
+    スコア変化
+
+    左が好き
+      左 +2
+      右 -2
+
+    右が好き
+      左 -2
+      右 +2
+
+    どちらも好き
+      両方 +1
+
+    どちらも嫌い
+      両方 -1
+  */
+
 
   if (result === "left") {
 
-    actualA = 1;
-    actualB = 0;
+    scores[leftPerson.id] += 2;
+    scores[rightPerson.id] -= 2;
 
   }
 
   else if (result === "right") {
 
-    actualA = 0;
-    actualB = 1;
+    scores[leftPerson.id] -= 2;
+    scores[rightPerson.id] += 2;
 
   }
 
-  else {
+  else if (result === "both") {
 
-    actualA = 0.5;
-    actualB = 0.5;
+    scores[leftPerson.id] += 1;
+    scores[rightPerson.id] += 1;
 
   }
 
-  const K = 32;
+  else if (result === "neither") {
 
-  scores[leftPerson.id] =
-    ratingA +
-    K *
-    (actualA - expectedA);
+    scores[leftPerson.id] -= 1;
+    scores[rightPerson.id] -= 1;
 
-  scores[rightPerson.id] =
-    ratingB +
-    K *
-    (actualB - expectedB);
+  }
+
 
   comparisons++;
 
@@ -292,27 +338,43 @@ function vote(result) {
 function finishSort() {
 
   sortScreen.classList.add("hidden");
-
   resultScreen.classList.remove("hidden");
+
+
+  /*
+    スコア順に並べる
+
+    同点の場合は、
+    比較回数が多い人を優先
+  */
 
   const ranking =
     [...people]
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+
+        const scoreDifference =
           scores[b.id] -
-          scores[a.id]
-      )
+          scores[a.id];
+
+        if (scoreDifference !== 0) {
+          return scoreDifference;
+        }
+
+        return (
+          counts[b.id] -
+          counts[a.id]
+        );
+
+      })
       .slice(0, 9);
 
 
   /*
-  
-  Instagram風3×3配置
+    Instagram風3×3配置
 
-  4位  5位  6位
-  2位  1位  3位
-  7位  8位  9位
-
+    4位 5位 6位
+    2位 1位 3位
+    7位 8位 9位
   */
 
   const displayOrder = [
@@ -378,9 +440,7 @@ function finishSort() {
 
 
     tile.appendChild(image);
-
     tile.appendChild(rank);
-
     tile.appendChild(group);
 
     resultGrid.appendChild(tile);
@@ -424,15 +484,18 @@ bothButton.addEventListener(
 );
 
 
+/*
+  「スキップ」を
+  「どちらも嫌い」に変更
+*/
+
+skipButton.textContent =
+  "どちらも嫌い";
+
+
 skipButton.addEventListener(
   "click",
-  () => {
-
-    comparisons++;
-
-    showNextPair();
-
-  }
+  () => vote("neither")
 );
 
 
@@ -443,7 +506,7 @@ againButton.addEventListener(
 
 
 // ------------------------------------
-// 最初にデータを読み込む
+// データ読み込み開始
 // ------------------------------------
 
 loadPeople();
